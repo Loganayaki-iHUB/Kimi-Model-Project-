@@ -23,7 +23,8 @@ export async function generateProject(prompt: string): Promise<GenerationRespons
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || `Generation failed with status ${res.status}`);
+    const errorMsg = data.details?.join(', ') || data.error || `Generation failed with status ${res.status}`;
+    throw new Error(errorMsg);
   }
   return data;
 }

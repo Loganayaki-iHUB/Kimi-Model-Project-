@@ -95,15 +95,18 @@ export default function Home() {
 
     setLoading(true);
     setError(null);
+    console.log('[Frontend] Submitting prompt:', prompt);
 
     try {
       const response = await generateProject(prompt);
+      console.log('[Frontend] Generation response:', response);
       if (response.success && response.data) {
         setGeneratedProject(response.data);
       } else {
         setError(response.error || 'Failed to generate code.');
       }
     } catch (err: any) {
+      console.error('[Frontend] Error calling API:', err);
       setError(err.message || 'Error communicating with backend.');
     } finally {
       setLoading(false);
@@ -265,6 +268,14 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+
+              {/* Error Alert */}
+              {error && (
+                <div className="w-full mt-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs text-center flex items-center justify-center gap-2">
+                  <span>⚠️</span>
+                  <span>{error}</span>
+                </div>
+              )}
 
               {/* Action Chips */}
               <div className="flex items-center gap-2.5 mt-5 flex-wrap justify-center">

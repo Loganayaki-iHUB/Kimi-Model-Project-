@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { generationService } from '../services/generation.service';
 
 const generateSchema = z.object({
-  prompt: z.string().min(3, 'Prompt must be at least 3 characters long').max(1000, 'Prompt is too long'),
+  prompt: z.string().min(1, 'Please enter a prompt'),
   framework: z.enum(['html-tailwind', 'react']).optional().default('html-tailwind'),
 });
 
