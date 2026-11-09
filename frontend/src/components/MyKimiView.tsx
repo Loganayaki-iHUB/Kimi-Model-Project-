@@ -51,9 +51,8 @@ export const MyKimiView: React.FC = () => {
               return (
                 <div
                   key={i}
-                  className={`w-2.5 h-2.5 rounded-[2px] transition ${
-                    isRecent ? 'bg-sky-400/80 shadow-[0_0_6px_rgba(56,189,248,0.5)]' : 'bg-[#222830]'
-                  }`}
+                  className={`w-2.5 h-2.5 rounded-[2px] transition ${isRecent ? 'bg-sky-400/80 shadow-[0_0_6px_rgba(56,189,248,0.5)]' : 'bg-[#222830]'
+                    }`}
                 />
               );
             })}
@@ -106,13 +105,12 @@ export const MyKimiView: React.FC = () => {
                 return (
                   <div
                     key={idx}
-                    className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${
-                      isWhiteEye
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${isWhiteEye
                         ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]'
                         : isCyan
-                        ? 'bg-gradient-to-tr from-sky-500 to-blue-500 shadow-[0_0_4px_rgba(14,165,233,0.4)]'
-                        : 'bg-[#1b2027]/40'
-                    }`}
+                          ? 'bg-gradient-to-tr from-sky-500 to-blue-500 shadow-[0_0_4px_rgba(14,165,233,0.4)]'
+                          : 'bg-[#1b2027]/40'
+                      }`}
                   />
                 );
               })}

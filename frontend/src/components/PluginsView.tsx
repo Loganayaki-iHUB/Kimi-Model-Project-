@@ -128,9 +128,8 @@ export const PluginsView: React.FC = () => {
         <div className="flex items-center gap-6">
           <button
             onClick={() => setTopTab('plugins')}
-            className={`text-sm font-semibold transition pb-2 relative ${
-              topTab === 'plugins' ? 'text-white' : 'text-[#7d8692] hover:text-[#c4cbd4]'
-            }`}
+            className={`text-sm font-semibold transition pb-2 relative ${topTab === 'plugins' ? 'text-white' : 'text-[#7d8692] hover:text-[#c4cbd4]'
+              }`}
           >
             Plugins
             {topTab === 'plugins' && (
@@ -139,9 +138,8 @@ export const PluginsView: React.FC = () => {
           </button>
           <button
             onClick={() => setTopTab('skills')}
-            className={`text-sm font-semibold transition pb-2 relative ${
-              topTab === 'skills' ? 'text-white' : 'text-[#7d8692] hover:text-[#c4cbd4]'
-            }`}
+            className={`text-sm font-semibold transition pb-2 relative ${topTab === 'skills' ? 'text-white' : 'text-[#7d8692] hover:text-[#c4cbd4]'
+              }`}
           >
             Skills
             {topTab === 'skills' && (
@@ -182,11 +180,10 @@ export const PluginsView: React.FC = () => {
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`px-3.5 py-1 rounded-full text-xs font-medium transition whitespace-nowrap ${
-                isActive
+              className={`px-3.5 py-1 rounded-full text-xs font-medium transition whitespace-nowrap ${isActive
                   ? 'bg-[#222830] text-white shadow-sm border border-[#313a46]'
                   : 'text-[#87909c] hover:text-white hover:bg-[#171b21]'
-              }`}
+                }`}
             >
               {cat}
             </button>
@@ -225,11 +222,10 @@ export const PluginsView: React.FC = () => {
 
                 <button
                   onClick={() => toggleAdd(skill.id)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition shrink-0 ${
-                    isAdded
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition shrink-0 ${isAdded
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                       : 'bg-[#1e232a] text-[#c2c8d0] hover:bg-[#282f38] hover:text-white border border-[#2b323c]'
-                  }`}
+                    }`}
                 >
                   {isAdded ? 'Added' : 'Add'}
                 </button>
@@ -245,3 +241,4 @@ export const PluginsView: React.FC = () => {
     </div>
   );
 };
+
