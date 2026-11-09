@@ -35,7 +35,7 @@ export class GeminiAIProvider implements AIProvider {
 
     const systemInstruction = `
 You are an expert full-stack UI/UX architect and frontend developer.
-The user wants to generate a complete, production-ready, beautiful, modern website or web application based on their prompt.
+The user wants to generate a complete website or web application based on their prompt.
 
 Return your response strictly as a single valid JSON object with the following schema:
 {
@@ -54,14 +54,15 @@ Return your response strictly as a single valid JSON object with the following s
 
 Guidelines for the generated website code:
 1. Must be a self-contained, complete HTML file using Tailwind CSS via <script src="https://cdn.tailwindcss.com"></script>.
-2. Include modern FontAwesome or Lucide or SVG icons, inter fonts, responsive layouts, gradients, interactive JavaScript widgets where appropriate.
-3. Clean modern dark or light styling matching premium quality.
+2. If the user prompt is just a short greeting like "hi" or "hello", generate a friendly modern welcoming landing page or dashboard greeting screen.
+3. Keep the code clean, modular, modern and concise so it generates rapidly.
 4. DO NOT wrap the JSON output in markdown fences like \`\`\`json. Return RAW JSON only.
 `;
 
     try {
+      console.log(`[GeminiAIProvider] Starting generation for prompt: "${request.prompt}"`);
       const response = await this.ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-2.5-flash',
         contents: [
           {
             role: 'user',
@@ -71,8 +72,12 @@ Guidelines for the generated website code:
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
         },
       });
+      console.log('[GeminiAIProvider] Generation completed successfully from Google API!');
 
       const responseText = response.text?.trim() || '';
 
