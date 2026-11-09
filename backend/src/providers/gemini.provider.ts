@@ -60,9 +60,8 @@ Guidelines for the generated website code:
 `;
 
     try {
-      // Set timeout of 60 seconds so large generations don't drop
       const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: [
           {
             role: 'user',
@@ -72,9 +71,6 @@ Guidelines for the generated website code:
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
-          httpOptions: {
-            timeout: 60000,
-          },
         },
       });
 
