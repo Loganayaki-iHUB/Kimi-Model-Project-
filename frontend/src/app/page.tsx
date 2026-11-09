@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { MyKimiView } from '../components/MyKimiView';
+import { PluginsView } from '../components/PluginsView';
 import { Sidebar } from '../components/Sidebar';
 import { checkBackendHealth, generateProject } from '../lib/api';
 import { GeneratedProject } from '../types/generation';
@@ -177,6 +178,8 @@ export default function Home() {
         <main className="flex-1 overflow-y-auto flex flex-col items-center justify-between p-6">
           {activeNav === 'my-kimi' ? (
             <MyKimiView />
+          ) : activeNav === 'plugins' ? (
+            <PluginsView />
           ) : !generatedProject ? (
             /* Empty State: Pure Kimi Brand Center */
             <div className="w-full max-w-3xl flex-1 flex flex-col items-center justify-center my-auto">
