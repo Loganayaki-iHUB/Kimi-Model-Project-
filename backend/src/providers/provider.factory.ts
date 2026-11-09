@@ -1,4 +1,5 @@
 import { AIProvider } from '../types/generation';
+import { GeminiAIProvider } from './gemini.provider';
 import { MockAIProvider } from './mock.provider';
 
 export class AIProviderFactory {
@@ -18,13 +19,11 @@ export class AIProviderFactory {
         provider = new MockAIProvider();
         break;
       case 'gemini':
-        // Will be plugged in Phase 2
-        throw new Error('Gemini provider is scheduled for Phase 2 implementation.');
+        provider = new GeminiAIProvider();
+        break;
       case 'groq':
-        // Will be plugged in Phase 2
         throw new Error('Groq provider is scheduled for Phase 2 implementation.');
       case 'kimi':
-        // Will be plugged in Phase 5
         throw new Error('Kimi provider is scheduled for Phase 5 implementation.');
       default:
         console.warn(`Unknown AI provider "${providerType}". Falling back to mock provider.`);
