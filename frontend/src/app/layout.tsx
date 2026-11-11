@@ -1,9 +1,10 @@
-import './globals.css';
-import type { Metadata } from 'next';
+import "./globals.css";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: 'AI Website & Web App Builder',
-  description: 'Generate complete websites and web apps with natural language prompts',
+  title: "Loga Studio — From idea to website",
+  description:
+    "Shape your idea, review a thoughtful plan, and build a beautiful website with your favourite AI model.",
 };
 
 export default function RootLayout({
@@ -13,10 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen flex flex-col bg-slate-950 text-slate-100 antialiased">
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
-

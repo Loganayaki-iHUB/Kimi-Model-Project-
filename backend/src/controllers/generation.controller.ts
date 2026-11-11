@@ -1,10 +1,13 @@
-import { Request, Response } from 'express';
-import { z } from 'zod';
-import { generationService } from '../services/generation.service';
+import { Request, Response } from "express";
+import { z } from "zod";
+import { generationService } from "../services/generation.service";
 
 const generateSchema = z.object({
-  prompt: z.string().min(1, 'Please enter a prompt'),
-  framework: z.enum(['html-tailwind', 'react']).optional().default('html-tailwind'),
+  prompt: z.string().min(1, "Please enter a prompt"),
+  framework: z
+    .enum(["html-tailwind", "react"])
+    .optional()
+    .default("html-tailwind"),
 });
 
 export class GenerationController {
@@ -13,7 +16,7 @@ export class GenerationController {
       const status = await generationService.checkStatus();
       res.status(200).json(status);
     } catch (error: any) {
-      res.status(500).json({ status: 'error', message: error.message });
+      res.status(500).json({ status: "error", message: error.message });
     }
   }
 
@@ -23,8 +26,8 @@ export class GenerationController {
     if (!parseResult.success) {
       res.status(400).json({
         success: false,
-        error: 'Validation failed',
-        details: parseResult.error.errors.map((e) => e.message),
+        error: "Validation failed",
+        details: parseResult.error.issues.map((e) => e.message),
       });
       return;
     }
@@ -39,4 +42,3 @@ export class GenerationController {
     res.status(200).json(result);
   }
 }
-
