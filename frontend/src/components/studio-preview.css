@@ -1,0 +1,63 @@
+.full-preview-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+  background: #0e1521;
+  color: #e2e8f0;
+}
+
+.full-preview-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 20px;
+  min-height: 64px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #41455d;
+}
+
+.full-preview-header > div { min-width: 0; }
+.full-preview-header strong { display: block; overflow-wrap: anywhere; font-size: 14px; }
+.full-preview-header span { display: block; margin-top: 3px; color: #a4b0cc; font-size: 11px; }
+.full-preview-header > a { flex-shrink: 0; }
+
+.full-preview-page .preview-shell-full {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 16px 0;
+}
+
+.preview-shell-full .preview-stage { display: block; min-width: 0; overscroll-behavior: contain; }
+.preview-shell-full .preview-viewport { margin: 0 auto; min-height: 240px; resize: both; overflow: auto; transition: none; }
+.preview-shell-full .browser-toolbar { height: auto; min-height: 42px; }
+.preview-shell .device-buttons { flex-shrink: 0; }
+.preview-shell .preview-address { min-width: 0; }
+
+.preview-size-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-inline: 1px solid #41455d;
+  background: #1b2234;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.preview-size-controls label { display: flex; align-items: center; gap: 7px; }
+.preview-size-controls input { width: 76px; min-width: 0; padding: 5px 7px; border: 1px solid #64748b; border-radius: 4px; background: #0e1521; color: white; }
+.preview-size-controls input:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+.preview-size-controls .secondary-button { min-height: 30px; padding: 5px 10px; font-size: 12px; }
+.full-preview-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
+
+@media (max-width: 600px) {
+  .full-preview-header { align-items: flex-start; gap: 12px; padding: 10px; }
+  .full-preview-header > a { padding: 8px; font-size: 11px; }
+  .full-preview-page .preview-shell-full { padding-inline: 6px; }
+  .preview-size-controls { gap: 8px; padding: 8px; }
+  .preview-size-controls input { width: 60px; }
+}

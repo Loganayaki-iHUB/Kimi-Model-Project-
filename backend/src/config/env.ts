@@ -12,7 +12,9 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
-  AI_PROVIDER: z.enum(["mock", "gemini", "groq", "kimi"]).default("mock"),
+  AI_PROVIDER: z
+    .enum(["mock", "gemini", "groq", "kimi", "openrouter"])
+    .default("mock"),
   GEMINI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   KIMI_API_KEY: z.string().optional(),

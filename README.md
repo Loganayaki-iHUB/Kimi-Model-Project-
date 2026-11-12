@@ -1,4 +1,4 @@
-# Loga Studio
+# Kimo AI Studio
 
 A conversational website builder for the local prototype user **loga**. Describe a website, discuss requirements, review a visual blueprint, explicitly approve the plan, then inspect the generated files and live preview.
 
@@ -10,10 +10,10 @@ A conversational website builder for the local prototype user **loga**. Describe
 - Explicit **Approve & build** gate enforced by the server. New requirements invalidate the previous approval.
 - Actual per-file build progress: starting a file, saving its complete source, and recording its line count. Builds continue if the browser tab closes.
 - Preview, read-only file inspector, copy source, desktop/tablet/mobile viewport controls and ZIP export.
-- Version restoration. Failed builds restore the previous files; interrupted operations are recovered on server restart.
+- Version restoration and durable generation checkpoints. Interrupted or token-limited builds keep completed files and partial source, then offer Continue generation.
 - Settings for **Gemini**, **Kimi / Moonshot**, **OpenRouter** and a no-key **Demo builder**.
 - Live provider model discovery, searchable selection, manual model IDs, connection testing and saved model preferences per provider.
-- API keys encrypted with AES-256-GCM before MongoDB storage. Browser responses contain only saved-state information and the last four characters.
+- Named provider/key/model connection cards, a green active indicator, AES-256-GCM encrypted storage, and an explicit eye-button reveal. Normal settings responses expose only the last four characters; the reveal endpoint returns the requested key with no-store headers. Revealed values hide after 30 seconds.
 
 Demo mode exercises the full workflow with a deterministic starter. Connect an AI model for tailored conversations, design proposals and custom file generation.
 
@@ -131,7 +131,7 @@ cd frontend
 npm run build
 ```
 
-Integration tests require local MongoDB. They create and remove their own uniquely named `loga_kimi_test_*` database; they do not change `loga-kimi` or call paid models. Tests cover persistence, approval gating, input validation, concurrency locks, HTML and React builds, revisions, credential encryption, provider request contracts, interrupted work and failed-build recovery.
+Integration tests require local MongoDB. They create and remove their own uniquely named `loga_kimi_test_*` database; they do not change `loga-kimi` or call paid models. Tests cover persistence, approval gating, input validation, concurrency locks, HTML and React builds, revisions, credential encryption, provider request contracts, interrupted work token-limit continuation, local file persistence and saved connection activation/reveal.
 
 ## Prototype scope
 
@@ -143,3 +143,14 @@ Integration tests require local MongoDB. They create and remove their own unique
 - Live provider requests depend on model availability, key permissions, credits and connectivity. Connection testing may consume provider tokens.
 
 Provider references: [Gemini model discovery](https://ai.google.dev/api/models), [OpenRouter model discovery](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties), [Kimi API overview](https://www.kimi.ai/help/kimi-api/api-overview), [Sandpack](https://sandpack.codesandbox.io/docs/getting-started/usage).
+
+
+## Local source files and continuation
+
+Generated projects are written under `backend/projects/<project-heading>--<project-id>/`. The first approved heading becomes a stable folder name. Source files are atomically saved during streamed generation and mirrored in MongoDB. `PROJECT.md` describes the project; `.kimo/project.json` holds its checkpoint and `.kimo/versions/vN/` preserves completed versions. Credentials are never written into project folders. Existing generated projects are backfilled to disk on backend startup.
+
+If generation reaches an output limit, loses its connection or the process restarts, completed files remain in place and the unfinished file is saved with `partial` status. **Continue generation** uses the approved plan, skips completed paths and asks for the missing suffix of the partial file. The provider still determines the returned continuation; inspect the result in Preview/Files as usual. You can activate another saved connection before continuing. Saved work is not rolled back when a provider fails.
+
+New endpoints: `POST /projects/:id/continue` with `{ "approved": true }`, `POST /settings/profiles/:id/activate`, and `POST /settings/profiles/:id/reveal`. `PUT /settings` accepts an optional `name`, `profileId` for editing, and `activate: false` to save a card without switching the active model. Each key/model card is stored encrypted inside the user's MongoDB settings. Environment keys can be saved into a named encrypted card as well.
+
+The local project folder is ignored by Git. Integration tests use a separate temporary project root and unique MongoDB test database, and remove only those test artifacts.

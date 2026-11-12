@@ -48,6 +48,15 @@ export interface ProjectFile {
   path: string;
   content: string;
   language: string;
+  status?: "partial" | "complete";
+}
+export interface BuildCheckpoint {
+  plan: Plan;
+  stack: Stack;
+  completedPaths: string[];
+  currentFile: string | null;
+  baselineFiles: ProjectFile[];
+  startedAt: string;
 }
 export interface BuildEvent {
   id: string;
@@ -66,7 +75,14 @@ export interface Project {
   id: string;
   userId: string;
   title: string;
-  stage: "discovery" | "planning" | "review" | "building" | "ready" | "failed";
+  stage:
+    | "discovery"
+    | "planning"
+    | "review"
+    | "building"
+    | "ready"
+    | "failed"
+    | "paused";
   stack: Stack;
   messages: Message[];
   plan: Plan | null;
@@ -81,6 +97,18 @@ export interface Project {
   updatedAt: string;
   buildProvider?: string;
   buildModel?: string;
+  checkpoint?: BuildCheckpoint | null;
+  directoryName?: string;
+  localPath?: string;
+}
+export interface ConnectionProfile {
+  id: string;
+  name: string;
+  provider: Provider;
+  model: string;
+  encrypted: string;
+  last4: string;
+  createdAt: string;
 }
 export interface Settings {
   _id: string;
@@ -88,4 +116,6 @@ export interface Settings {
   model: string;
   credentials: Partial<Record<Provider, { encrypted: string; last4: string }>>;
   models: Partial<Record<Provider, string>>;
+  profiles?: ConnectionProfile[];
+  activeProfileId?: string | null;
 }

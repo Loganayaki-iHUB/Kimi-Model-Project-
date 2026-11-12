@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  randomUUID,
+} from "crypto";
 import { config } from "../config/env";
 import { settings } from "./database";
 import { Provider, Settings } from "./types";
@@ -68,9 +73,44 @@ export async function getSettings(): Promise<Settings> {
     );
     value = await settings().findOne({ _id: "loga" });
   }
+  if (!value!.profiles) {
+    const profiles = Object.entries(value!.credentials).map(
+      ([provider, credential]) => ({
+        id: randomUUID(),
+        name: `${provider} connection`,
+        provider: provider as Provider,
+        model:
+          value!.models[provider as Provider] ||
+          (value!.provider === provider ? value!.model : ""),
+        encrypted: credential!.encrypted,
+        last4: credential!.last4,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    value!.profiles = profiles;
+    value!.activeProfileId =
+      profiles.find(
+        (p) => p.provider === value!.provider && p.model === value!.model,
+      )?.id || null;
+    await settings().updateOne(
+      { _id: "loga", profiles: { $exists: false } },
+      { $set: { profiles, activeProfileId: value!.activeProfileId } },
+    );
+  }
   return value!;
 }
-export function getKey(value: Settings, provider: Provider) {
+export function getKey(
+  value: Settings,
+  provider: Provider,
+  profileId?: string,
+) {
+  const profile = value.profiles?.find(
+    (p) =>
+      p.id === (profileId || value.activeProfileId) && p.provider === provider,
+  );
+  if (profileId && !profile)
+    throw new Error("Saved connection not found for this provider.");
+  if (profile) return decrypt(profile.encrypted);
   const stored = value.credentials[provider];
   return stored ? decrypt(stored.encrypted) : envKeys[provider] || "";
 }
@@ -80,6 +120,10 @@ export async function publicSettings() {
     provider: value.provider,
     model: value.model,
     models: value.models,
+    activeProfileId: value.activeProfileId || null,
+    profiles: (value.profiles || []).map(
+      ({ encrypted, ...profile }) => profile,
+    ),
     providers: Object.fromEntries(
       (["mock", "gemini", "kimi", "openrouter"] as Provider[]).map((p) => [
         p,
@@ -217,7 +261,7 @@ export async function complete(
         "Content-Type": "application/json",
         Authorization: `Bearer ${rt.key}`,
         ...(rt.provider === "openrouter"
-          ? { "HTTP-Referer": config.FRONTEND_URL, "X-Title": "Loga Studio" }
+          ? { "HTTP-Referer": config.FRONTEND_URL, "X-Title": "Kimo AI Studio" }
           : {}),
       },
       body: JSON.stringify({

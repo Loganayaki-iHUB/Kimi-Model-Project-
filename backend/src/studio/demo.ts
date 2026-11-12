@@ -56,13 +56,11 @@ export function demoPlan(project: Project): Plan {
         hex: hexes[2] || (dark ? "#F4F4F5" : "#18181B"),
         usage: "Headings and body text",
       },
-      ...hexes
-        .slice(3, 6)
-        .map((hex, i) => ({
-          name: `Accent ${i + 2}`,
-          hex,
-          usage: "Supporting details",
-        })),
+      ...hexes.slice(3, 6).map((hex, i) => ({
+        name: `Accent ${i + 2}`,
+        hex,
+        usage: "Supporting details",
+      })),
     ],
     typography:
       "System sans-serif; bold, tightly tracked headings; 16px body text with generous line height.",

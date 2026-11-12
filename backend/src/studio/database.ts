@@ -22,6 +22,17 @@ export async function connectDatabase() {
   await projects().createIndex({ userId: 1, updatedAt: -1 });
   // A process restart interrupts in-flight work. Preserve completed files and enable retry.
   await projects().updateMany(
+    { busy: true, checkpoint: { $ne: null } },
+    {
+      $set: {
+        busy: false,
+        stage: "paused",
+        error:
+          "The server restarted. Your saved files are preserved; choose Continue generation.",
+      },
+    },
+  );
+  await projects().updateMany(
     { busy: true },
     {
       $set: {
@@ -32,6 +43,8 @@ export async function connectDatabase() {
       },
     },
   );
+  const { backfillLocalProjects } = await import("./storage");
+  await backfillLocalProjects();
 }
 export async function databaseHealthy() {
   try {

@@ -16,6 +16,7 @@ export interface ProjectFile {
   path: string;
   content: string;
   language: string;
+  status?: "partial" | "complete";
 }
 export interface Message {
   id: string;
@@ -32,7 +33,14 @@ export interface BuildEvent {
 export interface Project {
   id: string;
   title: string;
-  stage: "discovery" | "planning" | "review" | "building" | "ready" | "failed";
+  stage:
+    | "discovery"
+    | "planning"
+    | "review"
+    | "building"
+    | "ready"
+    | "failed"
+    | "paused";
   stack: Stack;
   messages: Message[];
   plan: Plan | null;
@@ -52,15 +60,30 @@ export interface Project {
   updatedAt: string;
   buildProvider?: string;
   buildModel?: string;
+  localPath?: string;
+  checkpoint?: {
+    completedPaths: string[];
+    currentFile: string | null;
+    plan: Plan;
+  } | null;
 }
 export type ProjectSummary = Pick<
   Project,
   "id" | "title" | "stage" | "updatedAt" | "version" | "stack"
->;
+> & { fileCount?: number; description?: string; colors?: Plan["colors"] };
 export interface Settings {
   provider: Provider;
   model: string;
   models: Partial<Record<Provider, string>>;
+  activeProfileId: string | null;
+  profiles: {
+    id: string;
+    name: string;
+    provider: Provider;
+    model: string;
+    last4: string;
+    createdAt: string;
+  }[];
   providers: Record<
     Provider,
     { hasKey: boolean; last4: string; source: "saved" | "environment" | null }

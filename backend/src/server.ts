@@ -14,7 +14,7 @@ async function start() {
   await connectDatabase();
   const server = createApp().listen(config.PORT, "127.0.0.1", () => {
     console.log(
-      `[Loga Studio] http://localhost:${config.PORT} · MongoDB connected`,
+      `[Kimo AI Studio] http://localhost:${config.PORT} · MongoDB connected`,
     );
   });
   const shutdown = () => {
@@ -26,6 +26,6 @@ async function start() {
   process.on("SIGTERM", shutdown);
 }
 void start().catch((error: Error) => {
-  console.error(`[Loga Studio] Startup failed: ${error.message}`);
+  console.error(`[Kimo AI Studio] Startup failed: ${error.message}`);
   process.exit(1);
 });

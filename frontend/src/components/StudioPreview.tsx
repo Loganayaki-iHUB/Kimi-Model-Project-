@@ -2,16 +2,37 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SandpackProvider, SandpackPreview } from "@codesandbox/sandpack-react";
-import { Monitor, RefreshCw, Smartphone, Tablet } from "lucide-react";
+import { ExternalLink, Monitor, RefreshCw, Smartphone, Tablet } from "lucide-react";
 import { Project } from "../types/studio";
+import "./studio-preview.css";
 
-export function StudioPreview({ project }: { project: Project }) {
-  const [page, setPage] = useState("index.html");
+export function StudioPreview({
+  project,
+  initialPage = "index.html",
+  fullPage = false,
+}: {
+  project: Project;
+  initialPage?: string;
+  fullPage?: boolean;
+}) {
+  const [page, setPage] = useState(initialPage);
   const [device, setDevice] = useState<"desktop" | "tablet" | "mobile">(
     "desktop",
   );
   const [reload, setReload] = useState(0);
+  const [customWidth, setCustomWidth] = useState<number | null>(null);
+  const [customHeight, setCustomHeight] = useState<number | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const fitWindow = () => {
+    setDevice("desktop");
+    setCustomWidth(null);
+    setCustomHeight(null);
+    if (viewport.current) {
+      viewport.current.style.width = "100%";
+      viewport.current.style.height = "100%";
+    }
+  };
   const htmlFiles = project.files.filter((f) => f.path.endsWith(".html"));
   const activePage = project.files.some((f) => f.path === page)
     ? page
@@ -93,7 +114,7 @@ export function StudioPreview({ project }: { project: Project }) {
     [project.files],
   );
   return (
-    <div className="preview-shell">
+    <div className={`preview-shell${fullPage ? " preview-shell-full" : ""}`}>
       <div className="browser-toolbar">
         <div className="browser-controls">
           <span />
@@ -117,7 +138,13 @@ export function StudioPreview({ project }: { project: Project }) {
               key={d}
               className={`icon-button ${device === d ? "active" : ""}`}
               aria-label={`${d} preview`}
-              onClick={() => setDevice(d)}
+              title={`${d} preview`}
+              aria-pressed={device === d && customWidth === null}
+              onClick={() => {
+                setDevice(d);
+                setCustomWidth(null);
+                if (fullPage && viewport.current) viewport.current.style.width = d === "tablet" ? "768px" : d === "mobile" ? "390px" : "100%";
+              }}
             >
               {i === 0 ? (
                 <Monitor size={15} />
@@ -129,15 +156,29 @@ export function StudioPreview({ project }: { project: Project }) {
             </button>
           ))}
           <span className="toolbar-divider" />
+          {!fullPage && <a
+            className="icon-button"
+            href={`/preview?${new URLSearchParams({ project: project.id, page: activePage })}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open full preview in new tab"
+            title="Open full preview in new tab"
+          ><ExternalLink size={15} /></a>}
           <button
             className="icon-button"
             aria-label="Reload preview"
+            title="Reload preview"
             onClick={() => setReload((n) => n + 1)}
           >
             <RefreshCw size={14} />
           </button>
         </div>
       </div>
+      {fullPage && <div className="preview-size-controls" aria-label="Preview viewport dimensions">
+        <label>Width <input type="number" aria-label="Preview width" min={320} max={2560} value={customWidth ?? (device === "tablet" ? 768 : device === "mobile" ? 390 : "")} placeholder="Auto" onChange={event => setCustomWidth(event.target.value ? Number(event.target.value) : null)} onBlur={() => setCustomWidth(value => value === null ? null : Math.max(320, Math.min(2560, value)))} /> px</label>
+        <label>Height <input type="number" aria-label="Preview height" min={240} max={2160} value={customHeight ?? ""} placeholder="Auto" onChange={event => setCustomHeight(event.target.value ? Number(event.target.value) : null)} onBlur={() => setCustomHeight(value => value === null ? null : Math.max(240, Math.min(2160, value)))} /> px</label>
+        <button type="button" className="secondary-button" onClick={fitWindow}>Fit window</button>
+      </div>}
       {previewStack !== "react" && htmlFiles.length > 1 && (
         <div className="page-tabs">
           {htmlFiles.map((file) => (
@@ -154,7 +195,7 @@ export function StudioPreview({ project }: { project: Project }) {
         </div>
       )}
       <div className={`preview-stage ${device}`}>
-        <div className="preview-viewport" key={`${project.id}-${reload}`}>
+        <div ref={viewport} className="preview-viewport" key={`${project.id}-${reload}`} style={fullPage ? { width: customWidth === null ? (device === "tablet" ? 768 : device === "mobile" ? 390 : "100%") : Math.max(320, Math.min(2560, customWidth)), height: customHeight === null ? "100%" : Math.max(240, Math.min(2160, customHeight)), maxWidth: "none" } : undefined}>
           {previewStack === "react" ? (
             <SandpackProvider
               template="react"

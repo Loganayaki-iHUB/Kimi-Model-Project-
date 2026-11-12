@@ -30,7 +30,9 @@ export function WorkflowStepper({
     ? 1
     : !project
       ? 0
-      : project.stage === "building" || project.stage === "failed"
+      : project.stage === "building" ||
+          project.stage === "failed" ||
+          project.stage === "paused"
         ? 3
         : project.stage === "ready"
           ? 4

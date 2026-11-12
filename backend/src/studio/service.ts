@@ -13,6 +13,13 @@ import {
   planSchema,
 } from "./types";
 import { z } from "zod";
+import {
+  ensureLocalProject,
+  saveSource,
+  saveLocalState,
+  saveRevision,
+} from "./storage";
+import { generateFile, appendContinuation } from "./generation-stream";
 
 export class HttpError extends Error {
   constructor(
@@ -90,6 +97,13 @@ function conversation(project: Project) {
 export async function chat(id: string, content: string) {
   const rt = await runtime();
   const project = await lock(id);
+  if (project.checkpoint) {
+    await projects().updateOne({ id }, { $set: { busy: false } });
+    throw new HttpError(
+      409,
+      "Continue the paused build before changing its requirements, or start a new project.",
+    );
+  }
   try {
     project.messages.push(message("user", content));
     const title =
@@ -168,6 +182,13 @@ export function validatePlan(plan: Plan, stack: Stack) {
 export async function planProject(id: string, stack: Stack) {
   const rt = await runtime();
   const project = await lock(id);
+  if (project.checkpoint) {
+    await projects().updateOne({ id }, { $set: { busy: false } });
+    throw new HttpError(
+      409,
+      "Continue the saved build before creating a different plan.",
+    );
+  }
   try {
     if (!project.messages.some((m) => m.role === "user"))
       throw new HttpError(400, "Describe your website in the chat first.");
@@ -223,7 +244,9 @@ export async function planProject(id: string, stack: Stack) {
     );
     throw error;
   }
-  return findProject(id);
+  const saved = await findProject(id);
+  await saveLocalState(saved);
+  return saved;
 }
 async function event(
   id: string,
@@ -241,100 +264,193 @@ async function event(
     { $push: { events: entry }, $set: { updatedAt: entry.createdAt } },
   );
 }
-export async function buildProject(id: string, approved: boolean) {
+export async function buildProject(
+  id: string,
+  approved: boolean,
+  resume = false,
+) {
   if (!approved)
     throw new HttpError(
       400,
-      "Explicit approval is required to build a website.",
+      "Explicit approval is required to build or continue a website.",
     );
   const rt = await runtime();
   const project = await lock(id);
-  if (project.stage !== "review" || !project.plan) {
+  if (
+    resume
+      ? !project.checkpoint || !["paused", "failed"].includes(project.stage)
+      : project.stage !== "review" || !project.plan
+  ) {
     await projects().updateOne({ id }, { $set: { busy: false } });
     throw new HttpError(
       409,
-      "Review a current plan before approving the build.",
+      resume
+        ? "There is no paused generation to continue."
+        : "Review a current plan before approving the build.",
     );
+  }
+  const checkpoint = resume
+    ? project.checkpoint!
+    : {
+        plan: project.plan!,
+        stack: project.stack,
+        completedPaths: [],
+        currentFile: null,
+        baselineFiles: project.files,
+        startedAt: new Date().toISOString(),
+      };
+  try {
+    await ensureLocalProject(project);
+  } catch (error) {
+    await projects().updateOne({ id }, { $set: { busy: false } });
+    throw error;
   }
   await projects().updateOne(
     { id },
     {
       $set: {
         stage: "building",
-        files: [],
-        events: [],
-        approvedPlan: project.plan,
+        checkpoint,
+        approvedPlan: checkpoint.plan,
+        ...(resume ? {} : { events: [] }),
         buildProvider: rt.provider,
         buildModel: rt.model,
       },
     },
   );
-  // Build survives a closed browser tab. Every completed file is persisted immediately.
   void (async () => {
     try {
-      const plan = project.plan!;
+      const plan = checkpoint.plan;
       await event(
         id,
-        `Approved plan · ${project.stack === "react" ? "React" : "HTML + CSS + JavaScript"} · ${rt.provider} / ${rt.model}`,
+        `${resume ? "Continuing saved build" : "Approved plan"} | ${checkpoint.completedPaths.length}/${plan.files.length} files completed | ${rt.provider} / ${rt.model}`,
       );
-      const demo = rt.provider === "mock" ? demoFiles(plan, project.stack) : [];
-      const files: ProjectFile[] = [];
+      await saveLocalState(await findProject(id));
+      const demo =
+        rt.provider === "mock" ? demoFiles(plan, checkpoint.stack) : [];
       for (const proposed of plan.files) {
-        await event(id, `Creating ${proposed.path} — ${proposed.purpose}`);
-        const previous = project.files.find((f) => f.path === proposed.path);
-        const content =
-          rt.provider === "mock"
-            ? demo.find((f) => f.path === proposed.path)?.content
-            : await complete(
-                filePrompt,
-                JSON.stringify({
-                  stack: project.stack,
-                  plan,
-                  file: proposed,
-                  brief: conversation(project),
-                  previousFile: previous?.content,
-                  completedFiles: files.map((f) => ({
-                    path: f.path,
-                    content: f.content,
-                  })),
-                }),
-                rt,
-              );
-        const cleaned = content
-          ?.trim()
-          .replace(/^```[^\n]*\n/, "")
-          .replace(/\n```\s*$/, "");
-        if (!cleaned)
-          throw new Error(`No content was returned for ${proposed.path}.`);
-        const language = /\.html$/.test(proposed.path)
-          ? "html"
-          : /\.css$/.test(proposed.path)
-            ? "css"
-            : /\.svg$/.test(proposed.path)
-              ? "svg"
-              : "javascript";
-        const file = { path: proposed.path, content: cleaned, language };
-        files.push(file);
-        await projects().updateOne({ id }, { $push: { files: file } });
+        if (checkpoint.completedPaths.includes(proposed.path)) continue;
+        const current = await findProject(id);
+        const partial =
+          checkpoint.currentFile === proposed.path
+            ? current.files.find(
+                (f) => f.path === proposed.path && f.status === "partial",
+              )?.content || ""
+            : "";
+        checkpoint.currentFile = proposed.path;
+        await projects().updateOne({ id }, { $set: { checkpoint } });
         await event(
           id,
-          `${proposed.path} created · ${cleaned.split("\n").length} lines`,
+          `${partial ? "Continuing" : "Creating"} ${proposed.path} - ${proposed.purpose}`,
+        );
+        let lastSaved = 0,
+          lastContent = partial;
+        const persist = async (
+          content: string,
+          status: "partial" | "complete",
+        ) => {
+          const file: ProjectFile = {
+            path: proposed.path,
+            content,
+            language: proposed.path.endsWith(".html")
+              ? "html"
+              : proposed.path.endsWith(".css")
+                ? "css"
+                : proposed.path.endsWith(".svg")
+                  ? "svg"
+                  : "javascript",
+            status,
+          };
+          await saveSource(project, file);
+          const latest = await findProject(id);
+          const files = latest.files.filter((f) => f.path !== file.path);
+          files.push(file);
+          await projects().updateOne(
+            { id },
+            { $set: { files, updatedAt: new Date().toISOString() } },
+          );
+          lastContent = content;
+          lastSaved = Date.now();
+        };
+        let content: string;
+        if (rt.provider === "mock")
+          content = demo.find((f) => f.path === proposed.path)?.content || "";
+        else {
+          const context = JSON.stringify({
+            stack: checkpoint.stack,
+            plan,
+            file: proposed,
+            brief: conversation(project),
+            previousFile: checkpoint.baselineFiles
+              .find((f) => f.path === proposed.path)
+              ?.content?.slice(0, 20000),
+            completedFiles: current.files
+              .filter((f) => checkpoint.completedPaths.includes(f.path))
+              .map((f) => ({
+                path: f.path,
+                content: f.content.slice(0, 12000),
+              })),
+            ...(partial
+              ? {
+                  continuation:
+                    "Continue the exact file from the last saved character. Return ONLY the missing suffix. Do not restart, repeat any saved source, add markdown fences or explanations. The existing content ends exactly at the end of savedPrefix.",
+                  savedPrefix: partial,
+                }
+              : {}),
+          });
+          try {
+            const generated = await generateFile(
+              filePrompt +
+                (partial
+                  ? "\nCONTINUATION: Return only the missing suffix after the saved prefix. Preserve whitespace needed at the boundary."
+                  : ""),
+              context,
+              rt,
+              async (chunk) => {
+                const merged = appendContinuation(partial, chunk);
+                if (Date.now() - lastSaved >= 1000)
+                  await persist(merged, "partial");
+              },
+            );
+            content = appendContinuation(partial, generated);
+          } catch (error) {
+            const suffix = (error as { partial?: string }).partial || "";
+            const merged = suffix
+              ? appendContinuation(partial, suffix)
+              : lastContent;
+            if (merged) await persist(merged, "partial");
+            throw error;
+          }
+        }
+        const cleaned = content
+          .replace(/^\s*```[^\n]*\n/, "")
+          .replace(/\n```\s*$/, "");
+        if (!cleaned.trim())
+          throw new Error(`No content was returned for ${proposed.path}.`);
+        await persist(cleaned, "complete");
+        checkpoint.completedPaths.push(proposed.path);
+        checkpoint.currentFile = null;
+        await projects().updateOne({ id }, { $set: { checkpoint } });
+        await saveLocalState(await findProject(id));
+        await event(
+          id,
+          `${proposed.path} saved locally | ${cleaned.split("\n").length} lines`,
           "file",
         );
       }
-      await event(
-        id,
-        `Checked project structure · ${files.length} files available`,
-        "info",
+      const latest = await findProject(id);
+      const files = plan.files.map(
+        (p) => latest.files.find((f) => f.path === p.path)!,
       );
       const revision = {
         version: project.version + 1,
         plan,
         files,
-        stack: project.stack,
+        stack: checkpoint.stack,
         createdAt: new Date().toISOString(),
       };
-      const summary = `Version ${revision.version} is ready to preview.\n\n${plan.description}\n\nPages: ${plan.pages.map((p) => p.name).join(", ")}.\n\nColour palette:\n${plan.colors.map((c) => `• ${c.name}: ${c.hex} — ${c.usage}`).join("\n")}\n\nTypography: ${plan.typography}\n\nBuilt ${files.length} files with ${rt.provider} / ${rt.model}. Preview the result and tell me what you’d like to change.${rt.provider === "mock" ? "\n\nThis is a demo starter. Connect an AI model for custom generation." : ""}`;
+      await saveRevision(project, revision);
+      const summary = `Version ${revision.version} is ready to preview.\n\n${plan.description}\n\nPages: ${plan.pages.map((p) => p.name).join(", ")}.\n\nColour palette:\n${plan.colors.map((c) => `- ${c.name}: ${c.hex} - ${c.usage}`).join("\n")}\n\nTypography: ${plan.typography}\n\n${files.length} files saved in ${project.localPath}.\nBuilt with ${rt.provider} / ${rt.model}.${rt.provider === "mock" ? "\nDemo mode uses a starter template." : ""}`;
       await projects().updateOne(
         { id },
         {
@@ -342,6 +458,8 @@ export async function buildProject(id: string, approved: boolean) {
             stage: "ready",
             busy: false,
             version: revision.version,
+            files,
+            checkpoint: null,
             error: null,
             updatedAt: revision.createdAt,
           },
@@ -351,7 +469,12 @@ export async function buildProject(id: string, approved: boolean) {
           },
         },
       );
-      await event(id, "Build complete · preview ready", "success");
+      await event(
+        id,
+        "Build complete | files saved locally | preview ready",
+        "success",
+      );
+      await saveLocalState(await findProject(id));
     } catch (error) {
       const detail = (error as Error).message;
       await event(id, detail, "error").catch(() => undefined);
@@ -360,16 +483,21 @@ export async function buildProject(id: string, approved: boolean) {
           { id },
           {
             $set: {
-              stage: "failed",
+              stage: "paused",
               busy: false,
               error: detail,
-              files: project.files,
-              approvedPlan: project.approvedPlan,
               updatedAt: new Date().toISOString(),
+            },
+            $push: {
+              messages: message(
+                "assistant",
+                `Generation paused. ${detail}\n\nYour completed files and partial source are saved locally and in MongoDB. Choose Continue generation to resume from the saved position. You can change the active model or key in Settings first if needed.`,
+              ),
             },
           },
         )
         .catch(() => undefined);
+      await saveLocalState(await findProject(id)).catch(() => undefined);
     }
   })();
   return findProject(id);

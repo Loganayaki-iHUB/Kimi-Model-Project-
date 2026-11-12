@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { Project } from "../src/studio/types";
 
 test("Studio workflow, persistence, approval, credentials and provider contracts", async (t) => {
   const databaseName = `loga_kimi_test_${randomUUID().replace(/-/g, "")}`;
+  const localRoot = await mkdtemp(path.join(tmpdir(), "kimo-studio-test-"));
+  process.env.PROJECTS_DIR = localRoot;
   process.env.MONGODB_URI = `mongodb://127.0.0.1:27017/${databaseName}`;
   process.env.AI_PROVIDER = "mock";
   process.env.CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("hex");
@@ -323,7 +328,7 @@ test("Studio workflow, persistence, approval, credentials and provider contracts
       },
     );
     await t.test(
-      "failed AI builds restore the previous files and allow a reviewed retry",
+      "interrupted AI builds preserve completed files and allow continuation",
       async () => {
         const previous = (await projects().findOne({ id }))!;
         await projects().updateOne(
@@ -367,17 +372,229 @@ test("Studio workflow, persistence, approval, credentials and provider contracts
           }
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
-        assert.equal(failed?.stage, "failed");
+        assert.equal(failed?.stage, "paused");
         assert.equal(failed?.version, previous.version);
-        assert.deepEqual(failed?.files, previous.files);
+        assert.ok(
+          failed?.files.some(
+            (f) => f.path === "styles.css" && f.content.includes("color: red"),
+          ),
+        );
+        assert.ok(failed?.checkpoint?.completedPaths.includes("styles.css"));
+        assert.equal(
+          await readFile(path.join(failed!.localPath!, "styles.css"), "utf8"),
+          ":root { color: red; }",
+        );
         assert.ok(failed?.events.some((e) => e.kind === "error"));
-        const retried = await request(`/projects/${id}/retry`, "POST");
-        assert.equal(retried.body.stage, "review");
+        assert.equal(
+          (await request(`/projects/${id}/retry`, "POST")).status,
+          409,
+        );
         globalThis.fetch = httpFetch;
         await request("/settings", "PUT", {
           provider: "mock",
           model: "demo-builder",
         });
+        const retried = await request(`/projects/${id}/continue`, "POST", {
+          approved: true,
+        });
+        assert.equal(retried.status, 202);
+        const continued = await waitForBuild();
+        assert.equal(
+          continued.files.find((f) => f.path === "styles.css")?.content,
+          ":root { color: red; }",
+        );
+        assert.equal(continued.checkpoint, null);
+        globalThis.fetch = httpFetch;
+        await request("/settings", "PUT", {
+          provider: "mock",
+          model: "demo-builder",
+        });
+      },
+    );
+    await t.test(
+      "saves truncated streaming output and resumes the exact partial file without regenerating completed files",
+      async () => {
+        await projects().updateOne(
+          { id },
+          { $set: { stage: "review", busy: false } },
+        );
+        await request("/settings", "PUT", {
+          provider: "gemini",
+          model: "streaming-test",
+          apiKey: "streaming-test-secret",
+        });
+        const sse = (payloads: unknown[]) =>
+          new Response(
+            payloads.map((p) => "data: " + JSON.stringify(p) + "\n\n").join(""),
+            { headers: { "Content-Type": "text/event-stream" } },
+          );
+        globalThis.fetch = (async () =>
+          sse([
+            {
+              candidates: [
+                { content: { parts: [{ text: ":root { color: " }] } },
+              ],
+            },
+            {
+              candidates: [
+                {
+                  content: { parts: [{ text: "blue;" }] },
+                  finishReason: "MAX_TOKENS",
+                },
+              ],
+            },
+          ])) as typeof fetch;
+        await request(`/projects/${id}/build`, "POST", { approved: true });
+        let paused: Project | undefined;
+        for (let n = 0; n < 100; n++) {
+          const value = (await request(`/projects/${id}`)).body;
+          if (!value.busy) {
+            paused = value;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        assert.equal(paused?.stage, "paused");
+        assert.equal(
+          paused?.files.find((f) => f.path === "styles.css")?.content,
+          ":root { color: blue;",
+        );
+        assert.equal(
+          await readFile(path.join(paused!.localPath!, "styles.css"), "utf8"),
+          ":root { color: blue;",
+        );
+        assert.equal(paused?.checkpoint?.currentFile, "styles.css");
+        assert.ok(
+          paused?.messages.at(-1)?.content.includes("Continue generation"),
+        );
+        assert.equal(
+          (
+            await request(`/projects/${id}/messages`, "POST", {
+              content: "Do not replace my partial code",
+            })
+          ).status,
+          409,
+        );
+        // Simulate a process restart while the current source is checkpointed.
+        await projects().updateOne(
+          { id },
+          { $set: { busy: true, stage: "building" } },
+        );
+        await connectDatabase();
+        assert.equal((await projects().findOne({ id }))?.stage, "paused");
+        let calls = 0;
+        globalThis.fetch = (async (_url: any, init: any) => {
+          calls++;
+          const body = JSON.parse(init.body);
+          if (calls === 1) {
+            assert.ok(body.contents[0].parts[0].text.includes("savedPrefix"));
+            return sse([
+              {
+                candidates: [
+                  {
+                    content: { parts: [{ text: " }" }] },
+                    finishReason: "STOP",
+                  },
+                ],
+              },
+            ]);
+          }
+          return sse([
+            {
+              candidates: [
+                {
+                  content: { parts: [{ text: "// generated test file" }] },
+                  finishReason: "STOP",
+                },
+              ],
+            },
+          ]);
+        }) as typeof fetch;
+        await request(`/projects/${id}/continue`, "POST", { approved: true });
+        const ready = await waitForBuild();
+        assert.equal(
+          ready.files.find((f) => f.path === "styles.css")?.content,
+          ":root { color: blue; }",
+        );
+        assert.equal(
+          ready.files.find((f) => f.path === "styles.css")?.status,
+          "complete",
+        );
+        assert.equal(calls, ready.plan!.files.length);
+        assert.ok(
+          (
+            await readFile(
+              path.join(ready.localPath!, ".kimo", "project.json"),
+              "utf8",
+            )
+          ).includes('"stage": "ready"'),
+        );
+        globalThis.fetch = httpFetch;
+        await request("/settings", "PUT", {
+          provider: "mock",
+          model: "demo-builder",
+        });
+      },
+    );
+    await t.test(
+      "stores multiple encrypted key/model cards and activates and reveals only the requested connection",
+      async () => {
+        const saved = await request("/settings", "PUT", {
+          provider: "kimi",
+          model: "model-a",
+          apiKey: "card-key-a-1234",
+          name: "Kimi primary",
+          activate: false,
+        });
+        assert.equal(saved.status, 200);
+        assert.equal(saved.body.provider, "mock");
+        const a = saved.body.profiles.find(
+          (p: any) => p.name === "Kimi primary",
+        );
+        assert.ok(a);
+        const second = await request("/settings", "PUT", {
+          provider: "kimi",
+          model: "model-b",
+          apiKey: "card-key-b-5678",
+          name: "Kimi secondary",
+          activate: false,
+        });
+        const b = second.body.profiles.find(
+          (p: any) => p.name === "Kimi secondary",
+        );
+        const active = await request(
+          `/settings/profiles/${a.id}/activate`,
+          "POST",
+        );
+        assert.equal(active.body.activeProfileId, a.id);
+        assert.equal(active.body.model, "model-a");
+        const { runtime } = await import("../src/studio/ai");
+        assert.equal((await runtime()).key, "card-key-a-1234");
+        const reveal = await request(
+          `/settings/profiles/${b.id}/reveal`,
+          "POST",
+        );
+        assert.equal(reveal.body.apiKey, "card-key-b-5678");
+        const publicData = JSON.stringify((await request("/settings")).body);
+        assert.ok(!publicData.includes("card-key-"));
+        assert.ok(!publicData.includes("encrypted"));
+        const stored = await settings().findOne({ _id: "loga" });
+        assert.ok(!JSON.stringify(stored).includes("card-key-a-1234"));
+        const edited = await request("/settings", "PUT", {
+          provider: "kimi",
+          profileId: b.id,
+          model: "model-c",
+          activate: false,
+        });
+        assert.equal(edited.body.activeProfileId, a.id);
+        assert.equal(
+          edited.body.profiles.find((p: any) => p.id === b.id).model,
+          "model-c",
+        );
+        assert.equal(
+          (await request("/settings/profiles/missing/reveal", "POST")).status,
+          404,
+        );
       },
     );
   } finally {
@@ -387,5 +604,8 @@ test("Studio workflow, persistence, approval, credentials and provider contracts
     assert.match(databaseName, /^loga_kimi_test_[a-f0-9]{32}$/);
     await client.db(databaseName).dropDatabase();
     await client.close();
+    assert.equal(path.dirname(localRoot), path.resolve(tmpdir()));
+    assert.ok(path.basename(localRoot).startsWith("kimo-studio-test-"));
+    await rm(localRoot, { recursive: true, force: true });
   }
 });
